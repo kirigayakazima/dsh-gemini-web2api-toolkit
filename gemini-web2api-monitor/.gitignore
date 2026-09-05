@@ -1,0 +1,6 @@
+node_modules/
+*.tsbuildinfo
+*.tgz
+.tmp/
+.npm-cache/
+# lib/ 是发布产物（DSH 插件运行时需要），提交进仓库

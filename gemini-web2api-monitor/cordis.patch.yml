@@ -1,0 +1,6 @@
+# gemini-web2api-monitor bundle patch: inserts the monitor plugin row
+# (host half = package default export; name must be the full package name
+# for loader resolution inside the profile bundles tree).
+- insert:
+    - id: gemini-web2api-monitor
+      name: "@dsh-external/gemini-web2api-monitor"

@@ -1,0 +1,32 @@
+# ============================================================
+# dsh-gemini-web2api-toolkit — 敏感文件防线
+# 任何情况都不要提交以下文件（真实凭据 / 环境产物）
+# ============================================================
+
+# ⚠️ 真实登录凭据（绝对禁止提交！）
+cookie.txt
+gemini-auth.json
+*.cookie
+*cookie*.txt
+
+# 运行时配置（含本地代理地址等个人信息）
+config.json
+
+# 环境产物
+.deps/
+.venv/
+__pycache__/
+*.pyc
+_chromesnap/
+.tmp/
+.npm-cache/
+node_modules/
+server.log
+server.log.err
+server.pid
+
+# 编辑器/系统
+.vscode/
+.idea/
+Thumbs.db
+.DS_Store
