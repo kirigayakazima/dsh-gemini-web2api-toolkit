@@ -15,7 +15,8 @@ dsh-gemini-web2api-toolkit/
 ├── gemini-web2api-monitor/   # DSH 监控插件（原创）：定时检测上游 slot39 权威字段，
 │                             #   降级自动提醒 + 侧边栏可视化面板 + 检测历史
 ├── patches/
-│   ├── gemini_web2api.py.patch  # 反代服务 4 处补丁（3.8-flash / model header / auth.json / xsrf）
+│   ├── gemini_web2api.py.patch  # 反代服务补丁（模型路由 header / auth.json / xsrf /
+│   │                            #   DSH 兼容：SSE 流式正确终止 / 工具真流式 / 工具描述精简）
 │   └── apply-patch.ps1          # 一键应用/回滚补丁
 ├── scripts/
 │   ├── manage.ps1               # Windows 服务管理（start/stop/status/test/log）
@@ -43,7 +44,20 @@ DSH ──(OpenAI API)──> http://127.0.0.1:8081/v1 ──> gemini-web2api（
 | `gemini-web2api`（反代服务） | [上游仓库](https://github.com/Sophomoresty/gemini-web2api) clone + 本仓库 patch | 网页版 → OpenAI 兼容 API |
 | `gemini-cookie-sync-extension` | 上游自带（PR #60） | 浏览器扩展，一键导出完整 cookie 含 httpOnly 的 TS 字段 |
 | `gemini-web2api-monitor` | **本仓库原创** | DSH 插件：降级监控 + UI |
-| `patches/` | **本仓库原创** | 上游缺失的 4 处修复 |
+| `patches/` | **本仓库原创** | 上游缺失的多处修复（模型路由 / DSH 兼容 / 流式） |
+
+## DSH 兼容性（重要）
+
+本仓库的补丁专门修复了 **DSH（DeepSeek Harness）等严格 OpenAI 客户端** 接入时的关键问题：
+
+| 现象 | 根因 | 修复 |
+|---|---|---|
+| 回复收到但一直显示 "Deep diving" / 思考中，直到 300s 超时 | HTTP/1.1 SSE 无 `Content-Length` 也无 `chunked`，严格客户端等不到响应结束边界（连接保持不关） | `protocol_version = "HTTP/1.0"`：响应后连接关闭（EOF），标准 SSE 终止信号 |
+| 带工具请求非常慢 / 客户端 idle timeout | 携 tools 时退化为阻塞的全量生成后单 chunk 返回 | 工具请求也真流式：文本边到边发，末尾再发解析后的 `tool_calls` + `finish_reason: tool_calls` |
+| 43 个工具让 Google 处理数分钟 | 工具描述过长约 32KB | 描述精简到 ~150 字符（参数 schema 完整保留）→ ~12KB，秒级响应 |
+| server.log 一直为空 | 日志只写 stderr | 同时落盘 server.log（实时刷新） |
+
+已实测：DSH + OpenAI SDK 完整收到 content → `finish_reason` → `[DONE]`，turn 正常结束，43 工具请求约 9s 完成。
 
 ## 快速开始
 
