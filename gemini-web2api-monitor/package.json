@@ -1,7 +1,7 @@
 {
   "name": "@dsh-external/gemini-web2api-monitor",
   "version": "0.0.1",
-  "description": "监控 gemini-web2api 反代服务的模型降级状态（读上游 slot39 权威字段，定时检测 + 状态展示）",
+  "description": "鐩戞帶 gemini-web2api 鍙嶄唬鏈嶅姟鐨勬ā鍨嬮檷绾х姸鎬侊紙璇讳笂娓?slot39 鏉冨▉瀛楁锛屽畾鏃舵娴?+ 鐘舵€佸睍绀猴級",
   "private": true,
   "type": "module",
   "main": "./lib/index.js",
@@ -44,7 +44,7 @@
     },
     "client": {
       "inject": [
-        "@deepseek-ai/dsh-client-runtime",
+        "@deepseek-ai/dsh-client-modules",
         "@deepseek-ai/dsh-client-ui-slots"
       ],
       "platform": "web"
