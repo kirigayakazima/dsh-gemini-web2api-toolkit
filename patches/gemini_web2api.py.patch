@@ -1,5 +1,5 @@
 diff --git a/gemini_web2api.py b/gemini_web2api.py
-index 1f73f6e..e6450ea 100644
+index 1f73f6e..51a9a98 100644
 --- a/gemini_web2api.py
 +++ b/gemini_web2api.py
 @@ -61,9 +61,95 @@ DEFAULT_CONFIG = {
@@ -267,19 +267,24 @@ index 1f73f6e..e6450ea 100644
  def fetch_latest_bl() -> Optional[str]:
      """Fetch the latest gemini_bl from gemini.google.com page."""
      try:
-@@ -194,6 +394,50 @@ def update_bl_if_needed() -> bool:
+@@ -194,6 +394,55 @@ def update_bl_if_needed() -> bool:
      return False
  
  
 +def fetch_xsrf_token() -> Optional[str]:
 +    """Fetch the current xsrf token (SNlM0e) from the signed-in Gemini page.
 +
-+    The token is SNlM0e verbatim, e.g.
++    MUST send SNlM0e verbatim: it looks like
 +        "AIaPT3Nf6-OwMfS0dnpZKG5SHwQ4:1790841775902"
-+    (~28 chars + ':' + 13-digit timestamp = 42 chars). Needed for
-+    authenticated StreamGenerate calls. WARNING: FdrFJe is NOT the xsrf token
-+    - it is a plain 18/20-digit session id; sending it as `at=` gets
-+    [["er",...,400,...,[{"..":["xsrf", ... ]}]]] => HTTP 400 Bad Request.
++    i.e. ~28 chars + ':' + a 13-digit timestamp (42 chars total).
++
++    WARNING: FdrFJe is NOT the xsrf token — it is a plain 18/20-digit session
++    id. Sending it as `at=` makes upstream answer
++        [["er",...,400,...,[{"...":["xsrf",
++            "AIaPT3Nf6-OwMfS0dnpZKG5SHwQ4:1790841775902",["<account id>"]]}]]]
++    which is exactly the "HTTP Error 400: Bad Request" seen when the auth file
++    carries no xsrf_token. So SNlM0e is tried first and FdrFJe only remains as a
++    last-resort fallback (kept for older page layouts where it still worked).
 +    """
 +    try:
 +        req = urllib.request.Request(
@@ -295,19 +300,19 @@ index 1f73f6e..e6450ea 100644
 +            urllib.request.HTTPSHandler(context=ctx))
 +        resp = opener.open(req, timeout=20)
 +        html = resp.read().decode("utf-8", errors="replace")
-+        # SNlM0e 才是 xsrf token：<~28 chars>:<13 位时间戳>
++        # 首选：完整的 SNlM0e（含冒号与时间戳）
 +        m = re.search(r'"SNlM0e"\s*:\s*"([A-Za-z0-9_\-]+:\d{8,})"', html)
 +        if m:
 +            return m.group(1)
-+        # 次选：SNlM0e 不带时间戳后缀时
++        # 次选：SNlM0e 可能不带时间戳后缀
 +        m2 = re.search(r'"SNlM0e"\s*:\s*"([A-Za-z0-9_\-]{15,})"', html)
 +        if m2:
 +            return m2.group(1)
-+        # 兜底：FdrFJe 只是会话 ID，不是 XSRF token
++        # 最后兜底：FdrFJe（注意：这只是会话 ID，不是 XSRF token）
 +        m3 = re.search(r'"FdrFJe"\s*:\s*"(-?\d+)"', html)
 +        if m3:
-+            log("WARNING: SNlM0e not found; falling back to FdrFJe (session "
-+                "id, not a real xsrf token) - upstream may reject with xsrf 400")
++            log("WARNING: SNlM0e not found; falling back to FdrFJe (session id, "
++                "not a real xsrf token) — upstream may reject with xsrf 400")
 +            return m3.group(1)
 +        return None
 +    except Exception as e:
@@ -318,7 +323,7 @@ index 1f73f6e..e6450ea 100644
  def upload_images(images: list) -> list:
      """Upload parsed OpenAI image parts and return Gemini file references."""
      if not images:
-@@ -220,7 +453,8 @@ def upload_images(images: list) -> list:
+@@ -220,7 +469,8 @@ def upload_images(images: list) -> list:
  
  # ─── Gemini Protocol ─────────────────────────────────────────────────────────
  
@@ -328,7 +333,7 @@ index 1f73f6e..e6450ea 100644
      """Send prompt to Gemini StreamGenerate with retry."""
      inner = [None] * 80
      if file_refs:
-@@ -239,8 +473,8 @@ def gemini_stream_generate(prompt: str, model_id: int, think_mode: int, file_ref
+@@ -239,8 +489,8 @@ def gemini_stream_generate(prompt: str, model_id: int, think_mode: int, file_ref
      inner[27] = 1
      inner[30] = [4]
      apply_chat_persistence_flags(inner)
@@ -338,7 +343,7 @@ index 1f73f6e..e6450ea 100644
      inner[61] = []
      inner[68] = 1
      inner[79] = model_id
-@@ -272,6 +506,9 @@ def gemini_stream_generate(prompt: str, model_id: int, think_mode: int, file_ref
+@@ -272,6 +522,9 @@ def gemini_stream_generate(prompt: str, model_id: int, think_mode: int, file_ref
          headers["Cookie"] = cookie_str
      if sapisid:
          headers["Authorization"] = make_sapisidhash(sapisid)
@@ -348,7 +353,7 @@ index 1f73f6e..e6450ea 100644
  
      last_err = None
      for attempt in range(CONFIG["retry_attempts"]):
-@@ -287,7 +524,12 @@ def gemini_stream_generate(prompt: str, model_id: int, think_mode: int, file_ref
+@@ -287,7 +540,12 @@ def gemini_stream_generate(prompt: str, model_id: int, think_mode: int, file_ref
                  resp = opener.open(req, timeout=CONFIG["request_timeout_sec"])
              else:
                  resp = urllib.request.urlopen(req, context=ctx, timeout=CONFIG["request_timeout_sec"])
@@ -362,7 +367,7 @@ index 1f73f6e..e6450ea 100644
          except urllib.error.HTTPError as e:
              if e.code == 405 and update_bl_if_needed():
                  reqid = int(time.time()) % 1000000
-@@ -311,7 +553,8 @@ def gemini_stream_generate(prompt: str, model_id: int, think_mode: int, file_ref
+@@ -311,7 +569,8 @@ def gemini_stream_generate(prompt: str, model_id: int, think_mode: int, file_ref
      raise last_err
  
  
@@ -372,7 +377,7 @@ index 1f73f6e..e6450ea 100644
      """Send prompt and yield incremental text deltas using httpx streaming."""
      inner = [None] * 80
      if file_refs:
-@@ -330,8 +573,8 @@ def gemini_stream_generate_iter(prompt: str, model_id: int, think_mode: int, fil
+@@ -330,8 +589,8 @@ def gemini_stream_generate_iter(prompt: str, model_id: int, think_mode: int, fil
      inner[27] = 1
      inner[30] = [4]
      apply_chat_persistence_flags(inner)
@@ -382,7 +387,7 @@ index 1f73f6e..e6450ea 100644
      inner[61] = []
      inner[68] = 1
      inner[79] = model_id
-@@ -362,12 +605,15 @@ def gemini_stream_generate_iter(prompt: str, model_id: int, think_mode: int, fil
+@@ -362,12 +621,15 @@ def gemini_stream_generate_iter(prompt: str, model_id: int, think_mode: int, fil
          headers["Cookie"] = cookie_str
      if sapisid:
          headers["Authorization"] = make_sapisidhash(sapisid)
@@ -399,7 +404,7 @@ index 1f73f6e..e6450ea 100644
          text = extract_response_text(raw)
          if text:
              yield text
-@@ -397,6 +643,18 @@ def gemini_stream_generate_iter(prompt: str, model_id: int, think_mode: int, fil
+@@ -397,6 +659,18 @@ def gemini_stream_generate_iter(prompt: str, model_id: int, think_mode: int, fil
                              if not inner_str or len(inner_str) < 50:
                                  continue
                              inner2 = json.loads(inner_str)
@@ -418,7 +423,7 @@ index 1f73f6e..e6450ea 100644
                              if isinstance(inner2, list) and len(inner2) > 4 and inner2[4]:
                                  for part in inner2[4]:
                                      if isinstance(part, list) and len(part) > 1 and part[1] and isinstance(part[1], list):
-@@ -516,6 +774,18 @@ def image_from_part(part: dict):
+@@ -516,6 +790,18 @@ def image_from_part(part: dict):
      return None
  
  
@@ -437,7 +442,7 @@ index 1f73f6e..e6450ea 100644
  def messages_to_prompt(messages: list, tools: list = None) -> tuple:
      """Convert OpenAI messages to (prompt_str, images_list)."""
      parts = []
-@@ -530,13 +800,55 @@ def messages_to_prompt(messages: list, tools: list = None) -> tuple:
+@@ -530,13 +816,55 @@ def messages_to_prompt(messages: list, tools: list = None) -> tuple:
                  "parameters": fn.get("parameters", tool.get("parameters", {})),
              })
          if tool_defs:
@@ -499,7 +504,7 @@ index 1f73f6e..e6450ea 100644
                  "To call a tool, respond with:\n"
                  '```tool_call\n{"name": "func_name", "arguments": {...}}\n```\n'
                  "Only use tool_call blocks when needed.\n\n"
-@@ -571,7 +883,7 @@ def messages_to_prompt(messages: list, tools: list = None) -> tuple:
+@@ -571,7 +899,7 @@ def messages_to_prompt(messages: list, tools: list = None) -> tuple:
              else:
                  parts.append(f"[Assistant]: {content}")
          elif role == "tool":
@@ -508,7 +513,7 @@ index 1f73f6e..e6450ea 100644
          else:
              parts.append(content if content else "")
      return "\n\n".join(p for p in parts if p), images
-@@ -639,6 +951,11 @@ def parse_tool_calls(text: str) -> tuple:
+@@ -639,6 +967,11 @@ def parse_tool_calls(text: str) -> tuple:
  # ─── HTTP Handler ────────────────────────────────────────────────────────────
  
  class GeminiHandler(BaseHTTPRequestHandler):
@@ -520,7 +525,7 @@ index 1f73f6e..e6450ea 100644
      def log_message(self, fmt, *args):
          client_ip = self.client_address[0] if self.client_address else "-"
          log(f"{client_ip} {fmt % args}")
-@@ -652,6 +969,27 @@ class GeminiHandler(BaseHTTPRequestHandler):
+@@ -652,6 +985,27 @@ class GeminiHandler(BaseHTTPRequestHandler):
          self.end_headers()
          self.wfile.write(body)
  
@@ -548,7 +553,16 @@ index 1f73f6e..e6450ea 100644
      def _authorized(self):
          keys = CONFIG.get("api_keys") or []
          if not keys:
-@@ -762,8 +1100,8 @@ class GeminiHandler(BaseHTTPRequestHandler):
+@@ -715,6 +1069,8 @@ class GeminiHandler(BaseHTTPRequestHandler):
+                 self._handle_google_generate(body, stream=True)
+             elif ":generateContent" in self.path:
+                 self._handle_google_generate(body, stream=False)
++            elif self.path == "/messages" or self.path.endswith("/messages"):
++                self._handle_search(body)
+             else:
+                 self.send_json({"error": "not found"}, 404)
+         except (BrokenPipeError, ConnectionResetError):
+@@ -762,8 +1118,8 @@ class GeminiHandler(BaseHTTPRequestHandler):
              return None, None, None, f"Unknown model: {model_name}"
          return model_name, cfg["mode"], (think_override if think_override is not None else cfg["think"]), None
  
@@ -559,7 +573,7 @@ index 1f73f6e..e6450ea 100644
          text = extract_response_text(raw)
          tool_calls = None
          if tools and text:
-@@ -772,6 +1110,49 @@ class GeminiHandler(BaseHTTPRequestHandler):
+@@ -772,6 +1128,49 @@ class GeminiHandler(BaseHTTPRequestHandler):
  
      def handle_chat(self, body: bytes):
          req = json.loads(body)
@@ -609,7 +623,7 @@ index 1f73f6e..e6450ea 100644
          model_name, model_id, think_mode, err = self._resolve_model(
              req.get("model", CONFIG["default_model"]))
          if err:
-@@ -779,12 +1160,78 @@ class GeminiHandler(BaseHTTPRequestHandler):
+@@ -779,12 +1178,78 @@ class GeminiHandler(BaseHTTPRequestHandler):
              return
  
          tools = req.get("tools")
@@ -689,7 +703,7 @@ index 1f73f6e..e6450ea 100644
          cid = f"chatcmpl-{uuid.uuid4().hex[:12]}"
          try:
              file_refs = upload_images(images)
-@@ -794,16 +1241,15 @@ class GeminiHandler(BaseHTTPRequestHandler):
+@@ -794,16 +1259,15 @@ class GeminiHandler(BaseHTTPRequestHandler):
  
          if stream and not tools:
              # True streaming: forward chunks as they arrive
@@ -711,7 +725,7 @@ index 1f73f6e..e6450ea 100644
                      chunk = {"id": cid, "object": "chat.completion.chunk", "created": int(time.time()),
                               "model": model_name, "choices": [{"index": 0, "delta": {"content": delta_text}, "finish_reason": None}]}
                      self.wfile.write(f"data: {json.dumps(chunk, ensure_ascii=False)}\n\n".encode())
-@@ -812,6 +1258,9 @@ class GeminiHandler(BaseHTTPRequestHandler):
+@@ -812,6 +1276,9 @@ class GeminiHandler(BaseHTTPRequestHandler):
                  chunk = {"id": cid, "object": "chat.completion.chunk", "created": int(time.time()),
                           "model": model_name, "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}]}
                  self.wfile.write(f"data: {json.dumps(chunk)}\n\n".encode())
@@ -721,7 +735,7 @@ index 1f73f6e..e6450ea 100644
                  self.wfile.write(b"data: [DONE]\n\n")
                  self.wfile.flush()
              except (BrokenPipeError, ConnectionResetError):
-@@ -820,9 +1269,117 @@ class GeminiHandler(BaseHTTPRequestHandler):
+@@ -820,9 +1287,117 @@ class GeminiHandler(BaseHTTPRequestHandler):
                  log(f"Stream error: {e}")
              return
  
@@ -840,7 +854,7 @@ index 1f73f6e..e6450ea 100644
          except Exception as e:
              self.send_json({"error": {"message": f"upstream error: {e}"}}, 502)
              return
-@@ -833,15 +1390,14 @@ class GeminiHandler(BaseHTTPRequestHandler):
+@@ -833,15 +1408,14 @@ class GeminiHandler(BaseHTTPRequestHandler):
          finish = "tool_calls" if tool_calls else "stop"
  
          if stream:
@@ -861,7 +875,170 @@ index 1f73f6e..e6450ea 100644
              self.wfile.write(b"data: [DONE]\n\n")
              self.wfile.flush()
          else:
-@@ -1081,6 +1637,16 @@ def main():
+@@ -853,6 +1427,162 @@ class GeminiHandler(BaseHTTPRequestHandler):
+                           "total_tokens": (len(prompt)+len(text))//4},
+             })
+ 
++    def _handle_search(self, body: bytes):
++        """Handle Anthropic Messages API requests for DSH web_search.
++        
++        When DSH's web-search-deepseek provider is configured with
++        baseURL=http://127.0.0.1:8081, it sends requests to /messages in
++        Anthropic format. This method routes them through Gemini Web's
++        native search capability (free) instead of DeepSeek API (paid).
++        
++        Retry: one retry on failure, then return error to DSH for its own retry.
++        """
++        req = json.loads(body)
++        # Extract search query from Anthropic Messages format
++        msgs = req.get("messages", [])
++        query = ""
++        for m in msgs:
++            c = m.get("content", "")
++            if isinstance(c, str):
++                query = c
++                break
++            elif isinstance(c, list):
++                for part in c:
++                    if isinstance(part, dict) and part.get("type") == "text":
++                        query = part.get("text", "")
++                        break
++        if not query:
++            for t in req.get("tools", []):
++                q = t.get("queries", []) if isinstance(t, dict) else []
++                if q:
++                    query = ", ".join(q)
++                    break
++        if not query:
++            query = req.get("content", "")
++
++        log(f"[Search] query: {query[:80]}")
++        result_text = self._execute_search(query)
++        
++        # Return Anthropic Messages API format
++        response = {
++            "id": f"msg_{uuid.uuid4().hex[:12]}",
++            "type": "message",
++            "role": "assistant",
++            "content": [{"type": "text", "text": result_text}],
++            "model": req.get("model", "gemini-3.8-flash"),
++            "stop_reason": "end_turn",
++            "usage": {"input_tokens": len(query) // 4, "output_tokens": len(result_text) // 4},
++        }
++        self.send_json(response)
++        log(f"[Search] done: {len(result_text)}B result")
++
++    def _execute_search(self, query: str) -> str:
++        """Execute search via Gemini Web RPC with retry.
++        
++        Returns formatted search result text, or error message.
++        """
++        max_retries = 1
++        last_error = None
++        for attempt in range(max_retries + 1):
++            try:
++                cookie_str, sapisid = load_cookie()
++                if not cookie_str:
++                    last_error = "No cookie loaded"
++                    continue
++                
++                xsrf = CONFIG.get("xsrf_token") or ""
++                bl = CONFIG.get("gemini_bl")
++                if not bl:
++                    last_error = "No gemini_bl"
++                    continue
++                
++                search_prompt = (
++                    f"Please use Google Search to find information about: {query}\n"
++                    f"Search for the latest information on this topic and provide:\n"
++                    f"1. A brief summary of the search results\n"
++                    f"2. Key facts and details\n"
++                    f"3. Relevant source URLs if available"
++                )
++                
++                inner = [None] * 80
++                inner[0] = [search_prompt, 0, None, None, None, None, 0]
++                inner[1] = ["en"]
++                inner[2] = ["", "", "", None, None, None, None, None, None, ""]
++                inner[6] = [0]
++                inner[7] = 1
++                inner[10] = 1
++                inner[11] = 0
++                inner[17] = [[0]]  # think=0 for fast search
++                inner[18] = 0
++                inner[27] = 1
++                inner[30] = [4]
++                inner[41] = [1]  # temporary chats for search
++                inner[45] = 1
++                inner[53] = 0
++                inner[59] = str(uuid.uuid4())
++                inner[61] = []
++                inner[68] = 1
++                inner[79] = 1  # model_id for 3.8-flash
++
++                params = {"f.req": json.dumps([None, json.dumps(inner)])}
++                if xsrf:
++                    params["at"] = xsrf
++                body = urllib.parse.urlencode(params).encode()
++                reqid = int(time.time()) % 1000000
++                prefix = account_prefix()
++                url = (
++                    f"https://gemini.google.com{prefix}/_/BardChatUi/data/"
++                    "assistant.lamda.BardFrontendService/StreamGenerate"
++                    f"?bl={bl}&hl=en&_reqid={reqid}&rt=c"
++                )
++                headers = {
++                    "Content-Type": "application/x-www-form-urlencoded",
++                    "Origin": "https://gemini.google.com",
++                    "Referer": f"https://gemini.google.com{prefix}/app",
++                    "X-Same-Domain": "1",
++                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
++                    "Cookie": cookie_str,
++                }
++                if CONFIG.get("auth_user") is not None:
++                    headers["X-Goog-AuthUser"] = str(CONFIG["auth_user"])
++                if sapisid:
++                    ts = int(time.time())
++                    h = hashlib.sha1(f"{ts} {sapisid} https://gemini.google.com".encode()).hexdigest()
++                    headers["Authorization"] = f"SAPISIDHASH {ts}_{h}"
++                model_hdr = build_model_header("gemini-3.8-flash", 1)
++                if model_hdr:
++                    headers["x-goog-ext-525001261-jspb"] = model_hdr
++
++                proxy_url = CONFIG.get("proxy")
++                ctx = ssl.create_default_context()
++                if proxy_url:
++                    opener = urllib.request.build_opener(
++                        urllib.request.ProxyHandler({"http": proxy_url, "https": proxy_url}),
++                        urllib.request.HTTPSHandler(context=ctx))
++                else:
++                    opener = urllib.request.build_opener(urllib.request.HTTPSHandler(context=ctx))
++
++                t0 = time.time()
++                resp = opener.open(urllib.request.Request(url, data=body, headers=headers, method="POST"),
++                                   timeout=CONFIG.get("request_timeout_sec", 60))
++                raw = resp.read().decode("utf-8", errors="replace")
++                latency = int((time.time() - t0) * 1000)
++
++                text = extract_response_text(raw)
++                if text:
++                    log(f"[Search] {query[:40]}... → {len(text)}B ({latency}ms) attempt={attempt}")
++                    return text
++                else:
++                    last_error = f"Empty response"
++            except Exception as e:
++                last_error = str(e)
++            
++            if attempt < max_retries:
++                log(f"[Search] retry {attempt + 1}: {last_error}")
++                time.sleep(1)
++
++        return f"[Search failed after {max_retries + 1} attempts: {last_error}]"
++
+     def handle_responses(self, body: bytes):
+         """OpenAI Responses API for Codex CLI compatibility."""
+         req = json.loads(body)
+@@ -1081,6 +1811,16 @@ def main():
      if new_bl:
          CONFIG["gemini_bl"] = new_bl
  
