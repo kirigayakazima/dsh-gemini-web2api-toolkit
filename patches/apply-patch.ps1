@@ -37,7 +37,7 @@ if ($LASTEXITCODE -eq 0) {
   Write-Host "     ① gemini-3.8-flash 模型条目（上游暂无）" -ForegroundColor Cyan
   Write-Host "     ② x-goog-ext-525001261-jspb model header（Issue #82 修复）" -ForegroundColor Cyan
   Write-Host "     ③ load_cookie 支持 gemini-auth.json（自动注入 xsrf/bl）" -ForegroundColor Cyan
-  Write-Host "     ④ fetch_xsrf_token 自动抓取（FdrFJe）" -ForegroundColor Cyan
+  Write-Host "     ④ fetch_xsrf_token 自动抓取（SNlM0e，FdrFJe 仅作兜底）" -ForegroundColor Cyan
 } else {
   Write-Host "⚠️ 补丁无法干净应用（目标可能已有改动或版本不同）" -ForegroundColor Yellow
   Write-Host "   尝试强制应用? 或手动对比后打补丁" -ForegroundColor Yellow

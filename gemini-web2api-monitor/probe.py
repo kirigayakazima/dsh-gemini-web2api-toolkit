@@ -50,6 +50,24 @@ try:
         sys.exit(0)
 
     xsrf = CONFIG.get('xsrf_token') or ''
+    # 认证文件里的 xsrf_token 常为空 → 缺 at= 参数会被上游判 400（表现为"探测异常 400"），
+    # 因此这里自己从登录态页面抓一次 SNlM0e。注意不能用 FdrFJe：那只是会话 ID（纯数字），
+    # 当 at= 发出去会得到 [["er",...,400,...,[{"..":["xsrf",...]}]]]。
+    if not xsrf:
+        try:
+            _req = urllib.request.Request(
+                'https://gemini.google.com/app',
+                headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                         'Cookie': cookie_str})
+            _op = urllib.request.build_opener(
+                urllib.request.ProxyHandler({'http': PROXY, 'https': PROXY}),
+                urllib.request.HTTPSHandler(context=ssl.create_default_context()))
+            _html = _op.open(_req, timeout=20).read().decode('utf-8', errors='replace')
+            _m = re.search(r'"SNlM0e"\s*:\s*"([A-Za-z0-9_\-]+:\d{8,})"', _html)
+            if _m:
+                xsrf = _m.group(1)
+        except Exception:
+            xsrf = ''
     bl = CONFIG['gemini_bl']
     has_ts = TS_COOKIE + '=' in cookie_str
 
@@ -88,6 +106,14 @@ try:
         [1, None, None, None, MODEL_ID, None, None, 0,
          [4, 5, 6, 8, 4, 5, 6, 8], None, None, 2,
          None, None, 1, 0, str(uuid.uuid4())], separators=(',', ':'))
+    # 若模块提供了 build_model_header（与反代完全一致的模型选择头），优先复用，
+    # 确保探测结果与真实请求行为一致（避免简化 header 触发 Google 降级保护）。
+    try:
+        hdr = gw.build_model_header('gemini-3.8-flash', 1)
+        if hdr:
+            headers['x-goog-ext-525001261-jspb'] = hdr
+    except Exception:
+        pass
 
     req = urllib.request.Request(url, data=body, headers=headers, method='POST')
     ctx = ssl.create_default_context()
