@@ -79,6 +79,29 @@ powershell -File ../dsh-gemini-web2api-toolkit/patches/apply-patch.ps1 -Target .
 2. 打开 gemini.google.com 登录 → 点扩展 → Inspect session → Export
 3. 把 `gemini-auth.json` 放到反代项目目录
 
+### 2.5 预检认证文件（**强烈建议，10 秒**）
+
+导出后、重启反代前先跑这个。反代对"cookie 不完整"不会明确报错，只会**静默降级成
+Flash-Lite**，或者上游直接返回 `HTTP 400 Bad Request` —— 表现为"反代明明在跑，
+模型就是不对 / 一直失败"，很难查。
+
+```powershell
+python scripts/verify_auth.py
+# 或指定目录 / 强制跑一次上游真实探针
+python scripts/verify_auth.py --gemini-dir D:/CodePackage/DSP/gemini-web2api --probe
+```
+
+逐项检查认证字段是否齐全（`SID / HSID / SSID / APISID / SAPISID / __Secure-1PSID /
+__Secure-3PSID / __Secure-1PSIDTS`），以及 `xsrf_token`、`gemini_bl` 有没有取到
+（这两项为空时反代会退回内置默认值，build id 过期就可能 400）；字段有问题时会
+自动追加一次真实上游探针确证。**只打印字段名与长度，绝不打印任何 cookie 值。**
+
+> 实测踩坑：扩展有时只导出 `SSID / SAPISID / __Secure-1PSID / __Secure-3PSID`，
+> 缺 `SID / HSID / APISID`，且 `xsrf_token` 与 `gemini_bl` 均为空 —— 这份导出必然 400。
+> 另一个坑：页面上的 build id（`cfb2h`）会随 Google 发版变化，`config.json` 里的
+> `gemini_bl` 放旧了也可能触发 400，可从 `https://gemini.google.com/app` 页面源码里
+> 搜 `boq_assistant-bard-web-server_` 取当前值。
+
 ### 3. 配置并启动
 
 `config.json` 里把 `cookie_file` 指向 `gemini-auth.json`，然后：
