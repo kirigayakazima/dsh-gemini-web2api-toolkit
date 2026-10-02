@@ -18,6 +18,7 @@ dsh-gemini-web2api-toolkit/
 │   └── apply-patch.ps1          # 一键应用/回滚补丁
 ├── scripts/
 │   ├── manage.ps1               # Windows 服务管理（start/stop/status/test/log）
+│   ├── watchdog.py / .ps1       # 轻量守护：定期探测，挂了自动拉起，全程写日志
 │   ├── verify_auth.py           # 认证文件预检（导出 cookie 后先跑这个）
 │   └── start.bat                # 一键前台启动
 ├── docs/
@@ -28,6 +29,31 @@ dsh-gemini-web2api-toolkit/
 > 监控插件已独立成库：
 > [`dsh-gemini-web2api-monitor`](https://github.com/kirigayakazima/dsh-gemini-web2api-monitor)
 > （原先放在本仓库的 `gemini-web2api-monitor/` 子目录，已迁出以避免两份代码分叉）。
+
+### 守护进程 watchdog
+
+反代是后台进程，实测会**静默消失**（`server.log.err` 干净结束、无任何报错），
+而 DSH 侧只有真正发请求时才发现连不上。`watchdog.py` 负责兜底：
+
+```powershell
+powershell -File watchdog.ps1 start    # 启动守护（后台无窗口）
+powershell -File watchdog.ps1 status   # 状态 + 日志尾部
+powershell -File watchdog.ps1 stop     # 停止守护（反代本体不受影响）
+powershell -File watchdog.ps1 pause    # 暂停自动重启（手动维护时用）
+powershell -File watchdog.ps1 resume   # 恢复自动重启
+powershell -File watchdog.ps1 once     # 只检查一次
+```
+
+默认策略：每 **30s** 探测 `GET /v1/models`；**连续 2 次**失败才判定挂了（避免抖动误判）；
+拉起后给 **60s** 宽限期；**1 小时内最多重启 10 次**（防重启风暴，超限告警并停止）。
+
+**反代目录自动探测**（脚本可放在任意位置）：依次尝试 `-ServerRoot` 参数 →
+环境变量 `DSH_WEB2API_ROOT` → 脚本所在目录及其上一级 → `D:/CodePackage/DSP/gemini-web2api`。
+日志与状态（`watchdog.log` / `watchdog.state.json` / `watchdog.pid`）都写在**反代目录**里，
+与 `server.log` 同处，不会污染本 `scripts/` 目录。
+
+它拉起反代时用 `DETACHED_PROCESS`，**反代独立存活**（watchdog 退出也不会带走它），
+并把真实 PID 写进 `server.pid`，与 `manage.ps1` 的约定保持一致。
 
 ---
 
