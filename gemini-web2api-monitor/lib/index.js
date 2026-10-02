@@ -20,9 +20,6 @@ const inject = ['timer', 'webServer']
 const REJECT_ID = 'cf41b0e0dd7d53e5' // 上游"拒绝模型"标记（Issue #82 确认）
 const TS_COOKIE = '__Secure-1PSIDTS' // 决定资格的关键轮换 cookie（仅判断用）
 
-// Config: null 表示接受任意配置对象（与 brockdsaver 一致，避免 peerDep schemastery）
-const Config = null
-
 function sendJson(res, code, value) {
   res.statusCode = code
   res.setHeader('content-type', 'application/json; charset=utf-8')
@@ -191,5 +188,5 @@ function apply(ctx, config) {
   log('monitor started: every ' + cfg.intervalMs + 'ms, target ' + cfg.label + ' (' + cfg.modelId + ')')
 }
 
-export { name, inject, Config, apply }
-export default { name, inject, Config, apply }
+export { name, inject, apply }
+export default { name, inject, apply }

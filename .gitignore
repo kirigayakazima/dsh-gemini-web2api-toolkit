@@ -30,3 +30,6 @@ server.pid
 .idea/
 Thumbs.db
 .DS_Store
+
+# 本地修复前的备份，不入库
+*.bak-before-*
