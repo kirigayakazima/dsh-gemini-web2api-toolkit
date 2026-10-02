@@ -12,19 +12,22 @@
 
 ```
 dsh-gemini-web2api-toolkit/
-├── gemini-web2api-monitor/   # DSH 监控插件（原创）：定时检测上游 slot39 权威字段，
-│                             #   降级自动提醒 + 侧边栏可视化面板 + 检测历史
 ├── patches/
 │   ├── gemini_web2api.py.patch  # 反代服务补丁（模型路由 header / auth.json / xsrf /
 │   │                            #   DSH 兼容：SSE 流式正确终止 / 工具真流式 / 工具描述精简）
 │   └── apply-patch.ps1          # 一键应用/回滚补丁
 ├── scripts/
 │   ├── manage.ps1               # Windows 服务管理（start/stop/status/test/log）
+│   ├── verify_auth.py           # 认证文件预检（导出 cookie 后先跑这个）
 │   └── start.bat                # 一键前台启动
 ├── docs/
 │   └── 接入指南.md              # 完整中文接入教程（含 cookie 导出）
 └── README.md
 ```
+
+> 监控插件已独立成库：
+> [`dsh-gemini-web2api-monitor`](https://github.com/kirigayakazima/dsh-gemini-web2api-monitor)
+> （原先放在本仓库的 `gemini-web2api-monitor/` 子目录，已迁出以避免两份代码分叉）。
 
 ---
 
@@ -33,7 +36,7 @@ dsh-gemini-web2api-toolkit/
 ```
 DSH ──(OpenAI API)──> http://127.0.0.1:8081/v1 ──> gemini-web2api（反代）──> gemini.google.com（经日本代理）
                               ▲
-                              └── gemini-web2api-monitor 插件每 N 分钟探测上游，
+                              └── dsh-gemini-web2api-monitor 插件每 N 分钟探测上游，
                                   读权威字段 slot39 判断是否被静默降级
 ```
 
@@ -43,8 +46,9 @@ DSH ──(OpenAI API)──> http://127.0.0.1:8081/v1 ──> gemini-web2api（
 |---|---|---|
 | `gemini-web2api`（反代服务） | [上游仓库](https://github.com/Sophomoresty/gemini-web2api) clone + 本仓库 patch | 网页版 → OpenAI 兼容 API |
 | `gemini-cookie-sync-extension` | 上游自带（PR #60） | 浏览器扩展，一键导出完整 cookie 含 httpOnly 的 TS 字段 |
-| `gemini-web2api-monitor` | **本仓库原创** | DSH 插件：降级监控 + UI |
-| `patches/` | **本仓库原创** | 上游缺失的多处修复（模型路由 / DSH 兼容 / 流式） |
+| `dsh-gemini-web2api-monitor` | [独立仓库](https://github.com/kirigayakazima/dsh-gemini-web2api-monitor) | DSH 插件：降级监控 + 侧边栏 UI |
+| `scripts/verify_auth.py` | **本仓库原创** | 导出 cookie 后的认证预检（字段完整性 + 上游探针） |
+| `patches/` | **本仓库原创** | 上游缺失的多处修复（模型路由 / DSH 兼容 / 流式 / XSRF） |
 
 ## DSH 兼容性（重要）
 
@@ -113,8 +117,16 @@ powershell -File scripts/manage.ps1 start
 
 ### 4. 安装监控插件（DSH）
 
-把 `gemini-web2api-monitor` 作为 DSH 插件注入（需 dsh-super-injector），
-或参考其 package.json / cordis.patch.yml 自行装配。
+监控插件是**独立仓库**：
+[`dsh-gemini-web2api-monitor`](https://github.com/kirigayakazima/dsh-gemini-web2api-monitor)。
+安装方式见该仓库 README（把仓库目录 junction 到 profile 的
+`node_modules/@dsh-external/` 下，并把 bundle 名加进 `dsh.profile.bundles`）。
+
+> ⚠️ 该插件曾因导出 `Config = null` 触发 DSH 启动致命错误
+> （`Cannot use 'in' operator to search for 'toJSON' in null` → 欢迎窗口
+> `Web RPC failed` → 恢复流程禁用全部插件并重置 profile 配置）。
+> 该问题已在 `0.1.0` 修复；从旧版本升级时请确认 `lib/index.js` 里
+> 是 `export { name, inject, apply }`（**不要**有 `Config`）。
 
 ---
 

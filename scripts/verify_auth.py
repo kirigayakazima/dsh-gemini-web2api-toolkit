@@ -58,10 +58,27 @@ def parse_cookie_pairs(cookie: str):
 
 
 def _locate_probe():
-    """定位 probe.py：本脚本有两份（仓库 scripts/ 与插件安装目录），都要能找到它。"""
+    """定位 probe.py。
+
+    它随监控插件分发，插件仓库已独立出去
+    （https://github.com/kirigayakazima/dsh-gemini-web2api-monitor），
+    因此按以下顺序查找，任一命中即可：
+      1) 本目录（脚本被复制到插件目录时）
+      2) ../gemini-web2api-monitor/probe.py（toolkit 内仍留有副本时）
+      3) D:/CodePackage/DSPlug/gemini-web2api-monitor/probe.py（本机插件仓库）
+      4) D:/CodePackage/DSP/gemini-web2api-monitor/probe.py（本机旧位置）
+      5) 已装进 DSH profile 的插件副本
+    """
     here = Path(__file__).resolve().parent
-    for cand in (here.parent / "gemini-web2api-monitor" / "probe.py",   # scripts/ 版
-                 here / "probe.py"):                                    # 插件目录版
+    cands = [
+        here / "probe.py",
+        here.parent / "gemini-web2api-monitor" / "probe.py",
+        Path("D:/CodePackage/DSPlug/gemini-web2api-monitor/probe.py"),
+        Path("D:/CodePackage/DSP/gemini-web2api-monitor/probe.py"),
+        Path.home() / ".dsh" / "profiles" / "desktop" / "node_modules"
+        / "@dsh-external" / "gemini-web2api-monitor" / "probe.py",
+    ]
+    for cand in cands:
         if cand.exists():
             return cand
     return None
